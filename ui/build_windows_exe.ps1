@@ -1,4 +1,7 @@
-param([string]$OutputDirectory = 'dist\installer')
+param(
+    [string]$OutputDirectory = 'dist\installer',
+    [string]$EnvironmentDirectory = 'build\release-venv'
+)
 
 $ErrorActionPreference = 'Stop'
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
@@ -12,7 +15,10 @@ $ffmpegSha256 = '91adc75f861c9b1252fe0911fae527763693fa0ffc0ed247cbc9b2be8118b1c
 $ffmpegTag = 'autobuild-2026-11-02-22-51'
 $cache = Join-Path $repoRoot 'build\yt-dlp-ui-cache'
 $work = Join-Path $repoRoot 'build\yt-dlp-ui-release'
-$python = Join-Path $repoRoot 'build\release-venv\Scripts\python.exe'
+$venvRoot = [System.IO.Path]::GetFullPath((Join-Path $repoRoot $EnvironmentDirectory))
+if (-not $venvRoot.StartsWith((Join-Path $repoRoot 'build') + [System.IO.Path]::DirectorySeparatorChar,
+        [System.StringComparison]::OrdinalIgnoreCase)) { throw 'Release environment must stay under build.' }
+$python = Join-Path $venvRoot 'Scripts\python.exe'
 $bundle = Join-Path $repoRoot 'dist\yt-dlp-ui'
 $output = [System.IO.Path]::GetFullPath((Join-Path $repoRoot $OutputDirectory))
 $appVersion = & python -c 'from ui import APP_VERSION; print(APP_VERSION)'
@@ -26,7 +32,7 @@ if ($tagRevision -ne $upstreamRevision -or $LASTEXITCODE -ne 0 -or
     throw 'The release must be built from the unmodified yt-dlp 2026.10.26 source tag.'
 }
 if (-not (Test-Path -LiteralPath $python)) {
-    python -m venv (Join-Path $repoRoot 'build\release-venv')
+    python -m venv $venvRoot
     if ($LASTEXITCODE -ne 0) { throw 'Could not create release environment.' }
 }
 & $python -m pip install --disable-pip-version-check -e '.[default,gui,pin,pin-curl-cffi]' 'PyInstaller==6.22.0' 'PySide6==6.11.1'
@@ -106,7 +112,7 @@ foreach ($name in @('Deno-LICENSE.md', 'LGPL-3.0.txt', 'GPL-3.0.txt')) {
     Copy-Item -LiteralPath (Join-Path $cache $name) -Destination (Join-Path (Join-Path $bundle 'licenses') $name)
 }
 foreach ($name in @('pyside6', 'pyside6_addons', 'pyside6_essentials', 'shiboken6')) {
-    $metadata = Join-Path $repoRoot "build\release-venv\Lib\site-packages\$name-6.11.1.dist-info\METADATA"
+    $metadata = Join-Path $venvRoot "Lib\site-packages\$name-6.11.1.dist-info\METADATA"
     if (-not (Test-Path -LiteralPath $metadata)) { throw "Qt notice missing: $metadata" }
     Copy-Item -LiteralPath $metadata -Destination (Join-Path (Join-Path $bundle 'licenses') "$name-METADATA.txt")
 }
@@ -133,7 +139,7 @@ $manifest = [ordered]@{
     ffmpeg_build_revision = '58084b7cf4984303a34b610ba3ad8f04059d5d89'
     ffmpeg_source_sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $ffmpegSource).Hash.ToLowerInvariant()
     ffmpeg_build_source_sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $ffmpegBuildSource).Hash.ToLowerInvariant()
-    build_command = 'powershell -ExecutionPolicy Bypass -File ui\build_windows_exe.ps1'
+    build_command = "powershell -ExecutionPolicy Bypass -File ui\build_windows_exe.ps1 -EnvironmentDirectory $EnvironmentDirectory"
     installer_sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $installer).Hash.ToLowerInvariant()
     binaries = @{}
 }
