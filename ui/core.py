@@ -9,6 +9,7 @@ from urllib.parse import parse_qsl, urlparse
 
 PROGRESS_PREFIX = "__YTDLP_PROGRESS__"
 DEFAULT_TEMPLATE = "%(title)s [%(id)s].%(ext)s"
+AUDIO_TEMPLATE = "%(title)s [%(id)s] (audio).%(ext)s"
 
 VIDEO_FORMATS = {
     "Best": "bv*+ba/b",
@@ -118,6 +119,7 @@ def build_analysis_args(spec: DownloadSpec) -> list[str]:
         "--dump-single-json",
         "--flat-playlist",
         "--skip-download",
+        "--encoding", "utf-8",
         "--socket-timeout", "10",
         "--retries", "1",
         "--no-warnings",
@@ -138,12 +140,13 @@ def build_download_args(spec: DownloadSpec, ffmpeg_dir: str | None = None) -> li
     args = [
         "--newline",
         "--no-colors",
+        "--encoding", "utf-8",
         "--progress-template",
         f"download:{PROGRESS_PREFIX}%(progress)j",
         "--paths",
         output_dir,
         "--output",
-        DEFAULT_TEMPLATE,
+        AUDIO_TEMPLATE if spec.mode == "audio" else DEFAULT_TEMPLATE,
         *_network_args(spec),
         *_authentication_args(spec),
     ]

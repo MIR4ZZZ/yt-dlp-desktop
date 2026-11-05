@@ -43,6 +43,7 @@ def test_analysis_arguments_keep_url_after_separator(tmp_path):
     assert args[args.index("--cookies-from-browser") + 1] == "firefox"
     assert args[args.index("--retries") + 1] == "1"
     assert args[args.index("--socket-timeout") + 1] == "10"
+    assert args[args.index("--encoding") + 1] == "utf-8"
 
 
 def test_download_rejects_empty_folder(tmp_path):
@@ -90,6 +91,9 @@ def test_audio_arguments_and_cookie_file(tmp_path):
     assert args[args.index("--audio-format") + 1] == "flac"
     assert args[args.index("--cookies") + 1] == str(cookie_file)
     assert "--extract-audio" in args
+    video_args = build_download_args(make_spec(tmp_path, mode="video"))
+    assert args[args.index("--output") + 1] != video_args[video_args.index("--output") + 1]
+    assert "(audio)" in args[args.index("--output") + 1]
 
 
 def test_progress_parser_handles_json_and_partial_values():
