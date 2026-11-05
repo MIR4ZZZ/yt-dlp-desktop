@@ -51,7 +51,7 @@ class DownloadSpec:
         data["extra_args"] = []
         data["cookie_source"] = "None"
         data["cookie_file"] = ""
-        data["proxy"] = ""
+        data.pop("proxy", None)
         data["url"] = history_safe_url(self.url)
         return data
 

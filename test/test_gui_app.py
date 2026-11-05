@@ -3,10 +3,11 @@ import os
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication, QDialog, QInputDialog, QLineEdit, QScrollArea
+from PySide6.QtWidgets import QApplication, QDialog, QInputDialog, QLineEdit, QMessageBox, QScrollArea
 
 from ui.app import MainWindow, resolve_engine
 from ui.core import DownloadSpec, QueueJob
+from ui.process import QueueController
 
 
 def test_frozen_app_never_uses_its_own_executable_as_engine(tmp_path, monkeypatch):
@@ -173,3 +174,14 @@ def test_analysis_timeout_leaves_default_download_path(tmp_path, monkeypatch):
     assert "defaults" in window.download_button.text()
     assert "45 seconds" in window.analysis_error.text()
     window.deleteLater()
+
+
+def test_close_confirmation_pauses_queue_before_stopping(tmp_path, monkeypatch):
+    _app, window = make_window(tmp_path, monkeypatch)
+    monkeypatch.setattr(QueueController, "active", property(lambda self: True))
+    monkeypatch.setattr(QMessageBox, "question", lambda *args: QMessageBox.StandardButton.Yes)
+    window.queue.paused = False
+    window.close()
+    assert window.queue.paused
+    assert window._closing_after_stop
+    window.close()

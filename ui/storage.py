@@ -141,6 +141,8 @@ class JsonStore:
         from .core import history_safe_url
 
         clean = dict(item)
+        for key in ("proxy", "cookie_source", "cookie_file", "extra_args"):
+            clean.pop(key, None)
         previous_url = str(clean.get("url") or "")
         safe_url = history_safe_url(previous_url)
         clean["url"] = safe_url

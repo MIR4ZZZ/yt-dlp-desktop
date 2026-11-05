@@ -1177,6 +1177,7 @@ class MainWindow(QMainWindow):
                 event.ignore()
                 return
             self._closing_after_stop = True
+            self.queue.pause()
             self.queue.stop_current()
             self.analysis_runner.stop()
             from PySide6.QtCore import QTimer

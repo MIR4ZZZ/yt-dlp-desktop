@@ -169,4 +169,4 @@ def test_safe_history_spec_drops_authentication_and_expert_arguments(tmp_path):
     assert safe["cookie_source"] == "None"
     assert safe["cookie_file"] == ""
     assert safe["extra_args"] == []
-    assert safe["proxy"] == ""
+    assert "proxy" not in safe
