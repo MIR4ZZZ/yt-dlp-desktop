@@ -103,12 +103,12 @@ Copy-Item -LiteralPath 'LICENSE' -Destination (Join-Path $bundle 'licenses\yt-dl
 Copy-Item -LiteralPath 'THIRD_PARTY_LICENSES.txt' -Destination (Join-Path $bundle 'licenses\yt-dlp-THIRD-PARTY.txt')
 Copy-Item -LiteralPath $ffmpegLicense.FullName -Destination (Join-Path $bundle 'licenses\FFmpeg-LICENSE.txt')
 foreach ($name in @('Deno-LICENSE.md', 'LGPL-3.0.txt', 'GPL-3.0.txt')) {
-    Copy-Item -LiteralPath (Join-Path $cache $name) -Destination (Join-Path $bundle 'licenses' $name)
+    Copy-Item -LiteralPath (Join-Path $cache $name) -Destination (Join-Path (Join-Path $bundle 'licenses') $name)
 }
 foreach ($name in @('pyside6', 'pyside6_addons', 'pyside6_essentials', 'shiboken6')) {
     $metadata = Join-Path $repoRoot "build\release-venv\Lib\site-packages\$name-6.11.1.dist-info\METADATA"
     if (-not (Test-Path -LiteralPath $metadata)) { throw "Qt notice missing: $metadata" }
-    Copy-Item -LiteralPath $metadata -Destination (Join-Path $bundle 'licenses' "$name-METADATA.txt")
+    Copy-Item -LiteralPath $metadata -Destination (Join-Path (Join-Path $bundle 'licenses') "$name-METADATA.txt")
 }
 Copy-Item -LiteralPath 'ui\THIRD-PARTY-NOTICES.txt' -Destination (Join-Path $bundle 'licenses\THIRD-PARTY-NOTICES.txt')
 
