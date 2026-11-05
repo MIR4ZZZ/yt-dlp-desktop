@@ -84,7 +84,7 @@ $ffmpegLicense = Get-ChildItem -LiteralPath $ffmpegExtract -Recurse -File | Wher
 if (-not (Test-Path -LiteralPath $denoExe) -or -not $ffmpegExe -or -not $ffprobeExe -or -not $ffmpegLicense) {
     throw 'Deno or FFmpeg archive is incomplete or missing a license.'
 }
-if ((& $denoExe --version | Select-Object -First 1) -ne "deno $denoVersion") { throw 'Unexpected Deno version.' }
+if ((& $denoExe --version | Select-Object -First 1) -notlike "deno $denoVersion *") { throw 'Unexpected Deno version.' }
 
 & $python devscripts\make_lazy_extractors.py
 if ($LASTEXITCODE -ne 0) { throw 'Could not prepare yt-dlp extractors.' }
