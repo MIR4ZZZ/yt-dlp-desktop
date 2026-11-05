@@ -1,0 +1,9 @@
+Source archives for the bundled FFmpeg build:
+
+FFmpeg commit f80a436ffd922aebb6d64824b301884da2cc1ee4
+Build recipe revision 58084b7cf4984303a34b610ba3ad8f04059d5d89
+Binary release autobuild-2026-11-02-22-51 from yt-dlp/FFmpeg-Builds
+
+These archives must be published beside the installer. The build recipe
+identifies external libraries and their source locations. Review the exact
+binary configuration and source obligations before public distribution.
