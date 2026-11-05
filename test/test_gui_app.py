@@ -63,6 +63,7 @@ def test_command_preview_uses_argument_separator_and_settings_exclude_secrets(tm
     window.url_edit.setText("https://example.com/watch?v=abc")
     window.cookie_source.setCurrentText("Browser")
     window.browser_combo.setCurrentText("firefox")
+    window.proxy_edit.setText("http://name:secret@proxy.example")
     window.expert_args.setText('--sleep-requests "1"')
     app.processEvents()
     preview = window.command_preview.toPlainText()
@@ -73,6 +74,7 @@ def test_command_preview_uses_argument_separator_and_settings_exclude_secrets(tm
     settings = json.loads(window.store.settings_path.read_text(encoding="utf-8"))
     assert "cookie_source" not in settings
     assert "expert_args" not in settings
+    assert "proxy" not in settings
     window.deleteLater()
 
 
@@ -148,6 +150,10 @@ def test_compact_download_has_visible_actions_and_accessible_controls(tmp_path, 
         assert widget.mapTo(window, widget.rect().bottomRight()).y() < window.height()
     for widget in (window.mode_combo, window.quality_combo, window.container_combo, window.audio_combo, window.playlist_combo):
         assert widget.accessibleName()
+    window.url_edit.setFocus()
+    window.focusNextChild()
+    app.processEvents()
+    assert app.focusWidget() is window.analyze_button
     window.url_edit.setText("https://example.com/playlist")
     window.analysis_url = window.url_edit.text()
     window._analysis_complete({"_type": "playlist", "title": "Test playlist", "entries": [{"id": "1"}]})

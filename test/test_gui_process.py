@@ -1,6 +1,9 @@
 import json
 import os
 import sys
+import time
+
+import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -129,3 +132,49 @@ def test_delayed_stop_cannot_kill_next_job(tmp_path):
     completed = QSignalSpy(queue.job_completed)
     assert completed.wait(5000)
     assert second.status == "Completed"
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows Job Object behavior")
+def test_stop_reaps_child_process(tmp_path):
+    import ctypes
+    import subprocess
+
+    app = qt_app()
+    pid_file = tmp_path / "child.pid"
+    script = tmp_path / "parent.py"
+    script.write_text(
+        "import pathlib, subprocess, sys, time\n"
+        "child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(20)'])\n"
+        "pathlib.Path(sys.argv[1]).write_text(str(child.pid))\n"
+        "time.sleep(20)\n",
+        encoding="utf-8",
+    )
+    runner = ProcessRunner(sys.executable, [str(script), str(pid_file)])
+    finished = QSignalSpy(runner.finished)
+    runner.start_download([])
+    deadline = time.monotonic() + 5
+    while not pid_file.exists() and time.monotonic() < deadline:
+        app.processEvents()
+    assert pid_file.exists()
+    child_pid = int(pid_file.read_text())
+
+    def alive():
+        handle = ctypes.windll.kernel32.OpenProcess(0x00100000, False, child_pid)
+        if not handle:
+            return False
+        try:
+            return ctypes.windll.kernel32.WaitForSingleObject(handle, 0) == 0x102
+        finally:
+            ctypes.windll.kernel32.CloseHandle(handle)
+
+    try:
+        assert alive()
+        runner.stop()
+        assert finished.wait(5000)
+        deadline = time.monotonic() + 3
+        while alive() and time.monotonic() < deadline:
+            app.processEvents()
+        assert not alive()
+    finally:
+        if alive():
+            subprocess.run(["taskkill", "/PID", str(child_pid), "/F"], capture_output=True, check=False)

@@ -120,7 +120,7 @@ $sourceOutput = Join-Path $output 'sources'
 New-Item -ItemType Directory -Force -Path $sourceOutput | Out-Null
 Copy-Item -LiteralPath $ffmpegSource, $ffmpegBuildSource -Destination $sourceOutput
 Copy-Item -LiteralPath 'ui\THIRD-PARTY-SOURCES.txt' -Destination (Join-Path $sourceOutput 'README.txt')
-& $python -m pip freeze --disable-pip-version-check | Set-Content -Encoding utf8 (Join-Path $output 'BUILD-DEPENDENCIES.txt')
+& $python -m pip list --format=freeze | Set-Content -Encoding utf8 (Join-Path $output 'BUILD-DEPENDENCIES.txt')
 $manifest = [ordered]@{
     status = 'unsigned preview candidate'
     app_version = $appVersion
