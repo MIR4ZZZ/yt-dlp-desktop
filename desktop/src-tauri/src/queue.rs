@@ -28,6 +28,11 @@ fn emit(app: &tauri::AppHandle, queue: &Arc<Queue>) {
     if let Ok(jobs) = queue.jobs.lock() { let _ = app.emit("queue-updated", jobs.clone()); }
 }
 
+fn same_running_child(held: &mut Option<(String, Child)>, id: &str, pid: u32) -> bool {
+    held.as_mut().is_some_and(|(active_id, child)|
+        active_id == id && child.id() == pid && child.try_wait().ok().flatten().is_none())
+}
+
 impl Queue {
     pub fn add(self: &Arc<Self>, app: tauri::AppHandle, spec: DownloadSpec, start_now: bool) -> Result<(), String> {
         core::download_args(&spec, &tools()?)?;
@@ -47,11 +52,22 @@ impl Queue {
                 if let Some((active_id, child)) = held.as_mut() {
                     if id.is_none_or(|id| id == active_id) {
                         let pid = child.id();
+                        let stopped_id = active_id.clone();
                         let system = std::env::var_os("SystemRoot").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("C:\\Windows"));
                         let _ = Command::new(system.join("System32").join("taskkill.exe"))
-                            .args(["/PID", &pid.to_string(), "/T", "/F"]).creation_flags(0x08000000).status();
-                        let _ = child.kill();
+                            .args(["/PID", &pid.to_string(), "/T"]).creation_flags(0x08000000).status();
                         if let Some(job) = self.jobs.lock().unwrap().iter_mut().find(|job| job.id == *active_id) { job.status = "Stopped".into(); }
+                        drop(held);
+                        let queue = self.clone();
+                        thread::spawn(move || {
+                            thread::sleep(Duration::from_secs(2));
+                            let mut held = queue.child.lock().unwrap();
+                            if same_running_child(&mut held, &stopped_id, pid) {
+                                let _ = Command::new(system.join("System32").join("taskkill.exe"))
+                                    .args(["/PID", &pid.to_string(), "/T", "/F"]).creation_flags(0x08000000).status();
+                                let _ = held.as_mut().unwrap().1.kill();
+                            }
+                        });
                     }
                 }
             }
@@ -95,17 +111,20 @@ impl Queue {
                 emit(&app, &queue);
                 let result = queue.run(&app, &id, &spec);
                 let success = result.is_ok();
-                {
+                let completed = {
                     let mut jobs = queue.jobs.lock().unwrap();
                     if let Some(job) = jobs.iter_mut().find(|job| job.id == id) {
                         if job.status != "Stopped" {
                             job.status = if success { "Completed" } else { "Failed" }.into();
                             if let Err(message) = result { job.log.push(message); }
+                            success
+                        } else {
+                            false
                         }
-                    }
-                }
-                if success { save_success(&spec); }
-                if success { let _ = app.emit("history-updated", crate::clean_history(read_data("history.json", json!({"schema_version":2,"items":[]}))).get("items").cloned().unwrap_or(json!([]))); }
+                    } else { false }
+                };
+                if completed { save_success(&spec); }
+                if completed { let _ = app.emit("history-updated", crate::clean_history(read_data("history.json", json!({"schema_version":2,"items":[]}))).get("items").cloned().unwrap_or(json!([]))); }
                 emit(&app, &queue);
             }
             queue.running.store(false, Ordering::SeqCst);
@@ -174,4 +193,24 @@ fn save_success(spec: &DownloadSpec) {
         "output_dir": spec.output_dir, "spec": safe_spec, "completed_at": format!("{}Z", chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S"))}));
     items.truncate(100);
     let _ = write_data("history.json", &history);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn delayed_stop_cannot_match_the_next_job() {
+        let child = Command::new("powershell.exe").args(["-NoProfile", "-Command", "Start-Sleep -Seconds 10"])
+            .creation_flags(0x08000000).spawn().unwrap();
+        let pid = child.id();
+        let mut held = Some(("next-job".into(), child));
+        assert!(!same_running_child(&mut held, "stopped-job", pid));
+        assert!(!same_running_child(&mut held, "next-job", pid + 1));
+        assert!(same_running_child(&mut held, "next-job", pid));
+        let child = &mut held.as_mut().unwrap().1;
+        child.kill().unwrap();
+        child.wait().unwrap();
+        assert!(!same_running_child(&mut held, "next-job", pid));
+    }
 }
