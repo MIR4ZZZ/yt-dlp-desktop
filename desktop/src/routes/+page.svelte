@@ -61,7 +61,7 @@
       if (!active) return;
       event.preventDefault();
       if (!confirm('A download is still running. Stop it and close the app?')) return;
-      await invoke('queue_action', { action: 'stop', id: active.id });
+      await invoke('queue_action', { action: 'stop_and_wait', id: active.id });
       await getCurrentWindow().destroy();
     });
     return () => { subscription.then(unlisten => unlisten()); historySubscription.then(unlisten => unlisten()); closeSubscription.then(unlisten => unlisten()); };

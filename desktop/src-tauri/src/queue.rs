@@ -33,6 +33,14 @@ fn same_running_child(held: &mut Option<(String, Child)>, id: &str, pid: u32) ->
         active_id == id && child.id() == pid && child.try_wait().ok().flatten().is_none())
 }
 
+pub(crate) fn force_tree(child: &mut Child) {
+    let system = std::env::var_os("SystemRoot").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("C:\\Windows"));
+    let _ = Command::new(system.join("System32").join("taskkill.exe"))
+        .args(["/PID", &child.id().to_string(), "/T", "/F"]).stdout(Stdio::null()).stderr(Stdio::null())
+        .creation_flags(0x08000000).status();
+    let _ = child.kill();
+}
+
 impl Queue {
     pub fn add(self: &Arc<Self>, app: tauri::AppHandle, spec: DownloadSpec, start_now: bool) -> Result<(), String> {
         core::download_args(&spec, &tools()?)?;
@@ -47,7 +55,7 @@ impl Queue {
         match action {
             "pause" => self.paused.store(true, Ordering::SeqCst),
             "resume" => { self.paused.store(false, Ordering::SeqCst); self.start(app.clone()); },
-            "stop" => {
+            "stop" | "stop_and_wait" => {
                 let mut held = self.child.lock().unwrap();
                 if let Some((active_id, child)) = held.as_mut() {
                     if id.is_none_or(|id| id == active_id) {
@@ -55,17 +63,22 @@ impl Queue {
                         let stopped_id = active_id.clone();
                         let system = std::env::var_os("SystemRoot").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("C:\\Windows"));
                         let _ = Command::new(system.join("System32").join("taskkill.exe"))
-                            .args(["/PID", &pid.to_string(), "/T"]).creation_flags(0x08000000).status();
+                            .args(["/PID", &pid.to_string(), "/T"]).stdout(Stdio::null()).stderr(Stdio::null())
+                            .creation_flags(0x08000000).status();
                         if let Some(job) = self.jobs.lock().unwrap().iter_mut().find(|job| job.id == *active_id) { job.status = "Stopped".into(); }
+                        if action == "stop_and_wait" {
+                            thread::sleep(Duration::from_secs(2));
+                            if child.try_wait().ok().flatten().is_none() { force_tree(child); }
+                            let _ = child.wait();
+                            return Ok(())
+                        }
                         drop(held);
                         let queue = self.clone();
                         thread::spawn(move || {
                             thread::sleep(Duration::from_secs(2));
                             let mut held = queue.child.lock().unwrap();
                             if same_running_child(&mut held, &stopped_id, pid) {
-                                let _ = Command::new(system.join("System32").join("taskkill.exe"))
-                                    .args(["/PID", &pid.to_string(), "/T", "/F"]).creation_flags(0x08000000).status();
-                                let _ = held.as_mut().unwrap().1.kill();
+                                force_tree(&mut held.as_mut().unwrap().1);
                             }
                         });
                     }
@@ -209,8 +222,8 @@ mod tests {
         assert!(!same_running_child(&mut held, "next-job", pid + 1));
         assert!(same_running_child(&mut held, "next-job", pid));
         let child = &mut held.as_mut().unwrap().1;
-        child.kill().unwrap();
-        child.wait().unwrap();
+        force_tree(child);
+        assert!(!child.wait().unwrap().success());
         assert!(!same_running_child(&mut held, "next-job", pid));
     }
 }

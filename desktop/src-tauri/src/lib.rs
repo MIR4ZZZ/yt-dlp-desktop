@@ -168,7 +168,7 @@ async fn analyze(state: tauri::State<'_, Arc<State>>, spec: DownloadSpec) -> Res
     let state = state.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
         let generation = state.generation.fetch_add(1, Ordering::SeqCst) + 1;
-        if let Some((_, mut old)) = state.analysis.lock().unwrap().take() { let _ = old.kill(); }
+        if let Some((_, mut old)) = state.analysis.lock().unwrap().take() { queue::force_tree(&mut old); }
         let mut child = Command::new(engine()?).args(analysis_args(&spec)?).stdout(Stdio::piped()).stderr(Stdio::piped())
             .creation_flags(0x08000000).spawn().map_err(|e| e.to_string())?;
         let mut stdout = child.stdout.take().ok_or("Analysis output unavailable")?;
@@ -177,7 +177,7 @@ async fn analyze(state: tauri::State<'_, Arc<State>>, spec: DownloadSpec) -> Res
         let error_reader = std::thread::spawn(move || { let mut text = String::new(); use std::io::Read; let _ = stderr.read_to_string(&mut text); text });
         {
             let mut held = state.analysis.lock().unwrap();
-            if state.generation.load(Ordering::SeqCst) != generation { let _ = child.kill(); return Err("Analysis canceled".into()) }
+            if state.generation.load(Ordering::SeqCst) != generation { queue::force_tree(&mut child); return Err("Analysis canceled".into()) }
             *held = Some((generation, child));
         }
         let started = Instant::now();
@@ -193,7 +193,7 @@ async fn analyze(state: tauri::State<'_, Arc<State>>, spec: DownloadSpec) -> Res
                 return serde_json::from_str(&text).map_err(|_| "Analysis unavailable. You can download with defaults.".into());
             }
             if started.elapsed() >= Duration::from_secs(45) {
-                let _ = child.kill(); *held = None;
+                queue::force_tree(child); *held = None;
                 return Err("Analysis timed out. You can download with defaults.".into());
             }
             drop(held); std::thread::sleep(Duration::from_millis(100));
@@ -204,7 +204,7 @@ async fn analyze(state: tauri::State<'_, Arc<State>>, spec: DownloadSpec) -> Res
 #[tauri::command]
 fn cancel_analysis(state: tauri::State<'_, Arc<State>>) {
     state.generation.fetch_add(1, Ordering::SeqCst);
-    if let Some((_, mut child)) = state.analysis.lock().unwrap().take() { let _ = child.kill(); }
+    if let Some((_, mut child)) = state.analysis.lock().unwrap().take() { queue::force_tree(&mut child); }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
