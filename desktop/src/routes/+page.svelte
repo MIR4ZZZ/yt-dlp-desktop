@@ -197,6 +197,30 @@
     try { await invoke('open_folder', { path: String(item.output_dir || '') }); }
     catch (error) { status = String(error); }
   }
+
+  function historyTitle(item: Record<string, unknown>): string {
+    const title = String(item.title || '').trim();
+    if (title && !/^https?:\/\//i.test(title)) return title;
+    try {
+      const url = new URL(String(item.url || title));
+      const name = url.pathname.split('/').filter(Boolean).pop();
+      if (!name) return url.hostname;
+      try { return decodeURIComponent(name); } catch { return name; }
+    } catch { return title || 'Completed download'; }
+  }
+
+  function historyDetails(item: Record<string, unknown>): string {
+    let source = '';
+    try { source = new URL(String(item.url || '')).hostname.replace(/^www\./, ''); } catch { /* Sensitive links have no saved URL. */ }
+    const date = new Date(String(item.completed_at || ''));
+    const completed = Number.isNaN(date.getTime()) ? 'Date unavailable' : new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'short' }).format(date);
+    return [source, completed].filter(Boolean).join(' · ');
+  }
+
+  function navigate(target: Screen) {
+    screen = target;
+    status = target === 'History' ? `${history.length} completed download${history.length === 1 ? '' : 's'}` : target === 'Download' ? 'Ready' : target;
+  }
 </script>
 
 <svelte:head><title>Unofficial yt-dlp Desktop</title></svelte:head>
@@ -206,7 +230,7 @@
     <div class="brand"><span class="brand-mark">▶</span><span>yt-dlp <small>Desktop</small></span></div>
     <nav aria-label="Main navigation">
       {#each ['Download', 'Queue', 'History', 'Settings'] as item}
-        <button class:active={screen === item} onclick={() => screen = item as Screen} aria-current={screen === item ? 'page' : undefined}>{item}{#if item === 'Queue' && jobs.length}<span class="count">{jobs.length}</span>{/if}</button>
+        <button class:active={screen === item} onclick={() => navigate(item as Screen)} aria-current={screen === item ? 'page' : undefined}>{item}{#if item === 'Queue' && jobs.length}<span class="count">{jobs.length}</span>{/if}</button>
       {/each}
     </nav>
   </header>
@@ -240,7 +264,7 @@
     </main>
   {:else if screen === 'History'}
     <main class="content"><div class="section-head"><div><h1>History</h1><p class="intro">Your latest successful downloads.</p></div><button class="secondary" onclick={clearHistory}>Clear history</button></div>
-      {#if history.length === 0}<div class="empty-state"><span>◷</span><h2>No downloads yet</h2><p>Completed files appear here.</p></div>{:else}<div class="job-list">{#each history as item}<article class="history-item"><div><strong>{String(item.title || 'Completed download')}</strong><small>{String(item.completed_at || '')}</small></div><div class="job-actions"><button onclick={() => retryHistory(item)}>Download again</button><button onclick={() => openHistoryFolder(item)}>Open folder</button></div></article>{/each}</div>{/if}
+      {#if history.length === 0}<div class="empty-state"><span>◷</span><h2>No downloads yet</h2><p>Completed files appear here.</p></div>{:else}<div class="job-list">{#each history as item}<article class="history-item"><div class="history-info"><strong>{historyTitle(item)}</strong><small>{historyDetails(item)}</small></div><div class="history-actions"><button class="secondary" onclick={() => retryHistory(item)} aria-label={`Download ${historyTitle(item)} again`}>Download again</button><button class="secondary" onclick={() => openHistoryFolder(item)} aria-label={`Open folder containing ${historyTitle(item)}`}>Open folder</button></div></article>{/each}</div>{/if}
     </main>
   {:else}
     <main class="content settings"><h1>Settings</h1><p class="intro">Defaults and explicit access for this session.</p><div class="settings-grid"><div><label for="default-folder">Default download folder</label><div class="link-row"><input id="default-folder" bind:value={settings.download_dir} placeholder="C:\Users\…\Videos" /><button class="secondary" onclick={() => chooseFolder('default')}>Change</button></div></div><div><label for="retries">Retries</label><input id="retries" type="number" min="0" max="100" bind:value={settings.retries} /></div><div><label for="cookie-source">Access for this session</label><select id="cookie-source" bind:value={spec.cookie_source}><option>None</option><option>Browser</option><option>Cookie file</option></select></div>{#if spec.cookie_source === 'Browser'}<div><label for="browser">Browser</label><select id="browser" bind:value={spec.browser}>{#each ['chrome','firefox','edge','brave','opera'] as browser}<option>{browser}</option>{/each}</select></div>{:else if spec.cookie_source === 'Cookie file'}<div><label for="cookie-file">Cookie file</label><input id="cookie-file" bind:value={spec.cookie_file} /></div>{/if}<div><label for="proxy">Proxy for this session</label><input id="proxy" bind:value={spec.proxy} placeholder="Optional" /></div><div><label for="rate">Rate limit (KB/s)</label><input id="rate" type="number" min="0" bind:value={settings.rate_limit_kbps} /></div></div><button class="primary" onclick={saveSettings}>Save defaults</button><section class="about" aria-label="About"><h2>About</h2><p>Unofficial yt-dlp Desktop 1.3.0 preview · yt-dlp 2026.10.26 · Deno 2.9.8 · FFmpeg N-128340-gf80a436ffd.</p><p>FFmpeg is distributed under GPLv3 with its <a href="https://github.com/yt-dlp/FFmpeg-Builds/releases/tag/autobuild-2026-11-02-22-51">build and source information</a>. This app is independent of the yt-dlp project.</p></section>
@@ -286,6 +310,9 @@
   .content { padding-top: 38px; } .section-head { display: flex; justify-content: space-between; align-items: center; } .empty-state { margin: 80px auto 0; text-align: center; color: #aab5c1; } .empty-state span { font-size: 2rem; color: #7195bd; } .empty-state h2 { color: #e6edf3; font-size: 1.2rem; margin-bottom: 5px; }
   .job-list { margin-top: 28px; border-top: 1px solid #2b3542; } .job, .history-item { padding: 16px 4px; border-bottom: 1px solid #2b3542; display: flex; gap: 20px; align-items: center; justify-content: space-between; } .job div, .history-item { min-width: 0; } .job strong, .history-item strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .job small, .history-item small { color: #aab5c1; } progress { accent-color: #3a8dff; width: 140px; }
   .queue-tools { display: flex; align-items: center; gap: 16px; margin-top: 25px; } .job-actions { display: flex; gap: 6px; margin-top: 9px; } .job-actions button { border: 0; color: #a9c7e9; background: transparent; padding: 3px 7px; border-radius: 4px; } .job-actions button:hover { background: #263142; }
+  .history-item { display: grid; grid-template-columns: minmax(0, 1fr) max-content; gap: 24px; }
+  .history-info { min-width: 0; } .history-info small { display: block; margin-top: 5px; font-size: .78rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .history-actions { display: flex; gap: 8px; } .history-actions .secondary { min-height: 36px; padding: 0 11px; font-size: .8rem; white-space: nowrap; }
   .job details { margin-top: 10px; } .job pre { max-height: 180px; max-width: min(70vw, 600px); overflow: auto; white-space: pre-wrap; font-size: .75rem; color: #b9c4d1; }
   .settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 30px 0; } .settings-grid > div:first-child { grid-column: 1 / -1; }
   .about { border-top: 1px solid #2b3542; margin-top: 30px; padding-bottom: 30px; color: #aab5c1; font-size: .85rem; } .about h2 { color: #f2f5f7; font-size: 1rem; margin: 18px 0 8px; } .about p { margin: 6px 0; } .about a { color: #8bbdff; }
@@ -293,6 +320,7 @@
   .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
   @media (max-width: 720px), (max-height: 600px) { .topbar { padding: 0 10px; min-height: 40px; gap: 8px; } .brand { font-size: .82rem; } .brand small, .eyebrow { display: none; } nav button { padding: 6px 9px; font-size: .78rem; } main { width: min(100% - 24px, 820px); } .download { padding-top: 9px; } .heading { margin-bottom: 11px; } h1 { font-size: 1.5rem; } .intro { display: none; } input:not([type=checkbox]), select { min-height: 36px; } .secondary, .primary, .text-button { min-height: 36px; padding: 0 11px; font-size: .82rem; } .preview { min-height: 55px; margin: 7px 0 10px; padding: 7px 10px; } .preview-icon { width: 34px; height: 34px; } .preview-image { width: 70px; height: 40px; } .preview small { display: none; } .preview strong { font-size: .88rem; } .choice { gap: 7px; } .segment { height: 36px; } .actions { margin-top: 8px; } label, .field-label { margin-bottom: 4px; font-size: .75rem; } .playlist-row { margin: 0 0 7px; } footer { padding: 4px 12px; min-height: 24px; } }
   @media (max-width: 530px) { .brand { display: none; } .topbar { justify-content: center; } .choice { grid-template-columns: 1fr 1fr; } .choice > :last-child { grid-column: 1 / -1; } .settings-grid { grid-template-columns: 1fr; } }
+  @media (max-width: 560px) { .history-item { grid-template-columns: 1fr; gap: 10px; } }
   @media (max-height: 430px) { .preview-icon, .preview-image { display: none; } .preview { min-height: 38px; margin: 4px 0 7px; padding: 5px 8px; } .heading { margin-bottom: 7px; } .download { padding-top: 5px; } .actions { margin-top: 4px; } .playlist-row { margin-bottom: 4px; } }
   @media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }
   @media (forced-colors: active) { .primary, .secondary, .segment button.selected, nav button.active { border: 1px solid ButtonText; } progress { accent-color: Highlight; } }
