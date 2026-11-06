@@ -28,6 +28,7 @@
   let jobs: Job[] = $state([]);
   let history: Record<string, unknown>[] = $state([]);
   let preview: Record<string, unknown> | null = $state(null);
+  let thumbnailFailed = $state(false);
   let analyzing = $state(false);
   let analysisError = $state('');
   let linkError = $state('');
@@ -68,14 +69,14 @@
   });
 
   function changedLink() {
-    preview = null; analysisError = ''; linkError = '';
+    preview = null; thumbnailFailed = false; analysisError = ''; linkError = '';
     spec.playlist_mode = 'Single video'; spec.playlist_start = null; spec.playlist_end = null;
   }
 
   async function analyze() {
     linkError = '';
     if (!/^https?:\/\/[^\s/]+/i.test(spec.url.trim())) { linkError = 'Enter a complete http:// or https:// link.'; return; }
-    analyzing = true; analysisError = ''; preview = null;
+    analyzing = true; analysisError = ''; preview = null; thumbnailFailed = false;
     try {
       preview = await invoke<Record<string, unknown>>('analyze', { spec });
       spec.title = String(preview.title || '');
@@ -217,7 +218,7 @@
       <div class="link-row"><input id="url" type="url" placeholder="https://www.youtube.com/watch?v=…" bind:value={spec.url} oninput={changedLink} aria-invalid={!!linkError} aria-describedby={linkError ? 'link-error' : undefined} /><button class="secondary" onclick={analyzing ? cancelAnalysis : analyze}>{analyzing ? 'Cancel' : 'Analyze'}</button></div>
       {#if linkError}<p id="link-error" class="error" role="alert">{linkError}</p>{/if}
       {#if analyzing}<div class="preview loading" role="status"><span class="spinner"></span><div><strong>Looking up this link</strong><small>Checking title, formats, and playlist details…</small></div></div>
-      {:else if preview}<div class="preview"><div class="preview-icon">▶</div><div class="preview-copy"><strong>{String(preview.title || 'Untitled media')}</strong><small>{String(preview.extractor_key || preview.extractor || 'Supported media')} · {preview.duration ? (Number(preview.duration) < 60 ? `${Math.round(Number(preview.duration))} sec` : `${Math.round(Number(preview.duration) / 60)} min`) : 'Ready to download'}</small></div><span class="success">Ready</span></div>
+      {:else if preview}<div class="preview">{#if !thumbnailFailed && typeof preview.thumbnail === 'string' && preview.thumbnail.startsWith('https://')}<img class="preview-image" src={preview.thumbnail} alt="" loading="lazy" decoding="async" onerror={() => thumbnailFailed = true} />{:else}<div class="preview-icon">▶</div>{/if}<div class="preview-copy"><strong>{String(preview.title || 'Untitled media')}</strong><small>{String(preview.extractor_key || preview.extractor || 'Supported media')} · {preview.duration ? (Number(preview.duration) < 60 ? `${Math.round(Number(preview.duration))} sec` : `${Math.round(Number(preview.duration) / 60)} min`) : 'Ready to download'}</small></div><span class="success">Ready</span></div>
       {:else if analysisError}<div class="preview problem" role="status"><div class="preview-icon">!</div><div class="preview-copy"><strong>Analysis unavailable</strong><small>{analysisError} Download with defaults is still available.</small></div></div>
       {:else}<div class="preview empty"><div class="preview-icon">↗</div><div class="preview-copy"><strong>Ready when you are</strong><small>Analyze to see details, or download with defaults.</small></div></div>{/if}
 
@@ -275,7 +276,8 @@
   .text-button { background: transparent; border: 0; color: #b5c9df; padding-left: 0; } .text-button:hover { color: #fff; }
   .preview { display: flex; align-items: center; gap: 14px; min-height: 86px; margin: 18px 0 25px; padding: 15px 17px; border: 1px solid #2a3543; background: #171f29; border-radius: 10px; }
   .preview-icon { flex: none; width: 48px; height: 48px; display: grid; place-items: center; border: 1px solid #334155; border-radius: 8px; color: #9db7d4; font-size: 1.1rem; }
-  .preview-copy { min-width: 0; display: grid; gap: 4px; } .preview strong { font-size: 1rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .preview small { color: #a4afbc; font-size: .83rem; } .success { margin-left: auto; color: #9bcab2; font-size: .8rem; } .problem .preview-icon { color: #ffb5b5; } .spinner { width: 28px; height: 28px; border: 3px solid #3f5268; border-top-color: #3a8dff; border-radius: 50%; animation: spin .8s linear infinite; margin: 0 10px; } @keyframes spin { to { transform: rotate(360deg); } }
+  .preview-image { flex: none; width: 104px; height: 58px; object-fit: cover; border-radius: 6px; background: #202b3a; }
+  .preview-copy { flex: 1; min-width: 0; display: grid; gap: 4px; } .preview strong { font-size: 1rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .preview small { color: #a4afbc; font-size: .83rem; } .success { margin-left: auto; color: #9bcab2; font-size: .8rem; } .problem .preview-icon { color: #ffb5b5; } .spinner { width: 28px; height: 28px; border: 3px solid #3f5268; border-top-color: #3a8dff; border-radius: 50%; animation: spin .8s linear infinite; margin: 0 10px; } @keyframes spin { to { transform: rotate(360deg); } }
   .choice { display: grid; grid-template-columns: 1.25fr 1fr 1fr; gap: 12px; } .segment { display: flex; height: 43px; padding: 3px; border: 1px solid #344050; border-radius: 7px; background: #1a222d; } .segment button { flex: 1; border: 0; background: transparent; color: #aebcca; border-radius: 5px; } .segment button.selected { color: #fff; background: #32435a; box-shadow: 0 1px 3px #0005; }
   .actions { display: flex; align-items: center; justify-content: space-between; margin-top: 23px; } .action-end { display: flex; gap: 10px; }
   .playlist-row { display: flex; align-items: center; gap: 10px; margin: -9px 0 18px; } .playlist-row label { margin: 0; } .playlist-row select { max-width: 250px; } .playlist-row input { max-width: 85px; }
@@ -289,9 +291,9 @@
   .about { border-top: 1px solid #2b3542; margin-top: 30px; padding-bottom: 30px; color: #aab5c1; font-size: .85rem; } .about h2 { color: #f2f5f7; font-size: 1rem; margin: 18px 0 8px; } .about p { margin: 6px 0; } .about a { color: #8bbdff; }
   .overlay { position: fixed; inset: 0; background: #05080dbb; display: grid; place-items: center; padding: 16px; z-index: 10; } .dialog { width: min(100%, 480px); max-height: min(90vh, 640px); overflow: auto; border: 1px solid #3b4858; border-radius: 12px; background: #1a222d; box-shadow: 0 22px 80px #0009; padding: 25px; } .dialog h2 { margin: 0 0 5px; } .dialog p { color: #aab5c1; } .dialog-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 25px; } .option-fields { display: grid; gap: 8px; margin-top: 22px; } .option-fields label { margin: 7px 0 0; } .check { display: flex; align-items: center; gap: 9px; } .check input { accent-color: #3a8dff; } details { margin-top: 15px; color: #aab5c1; } details code { display: block; padding: 10px; overflow-wrap: anywhere; font-size: .75rem; }
   .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
-  @media (max-width: 720px), (max-height: 600px) { .topbar { padding: 0 10px; min-height: 40px; gap: 8px; } .brand { font-size: .82rem; } .brand small, .eyebrow { display: none; } nav button { padding: 6px 9px; font-size: .78rem; } main { width: min(100% - 24px, 820px); } .download { padding-top: 9px; } .heading { margin-bottom: 11px; } h1 { font-size: 1.5rem; } .intro { display: none; } input:not([type=checkbox]), select { min-height: 36px; } .secondary, .primary, .text-button { min-height: 36px; padding: 0 11px; font-size: .82rem; } .preview { min-height: 55px; margin: 7px 0 10px; padding: 7px 10px; } .preview-icon { width: 34px; height: 34px; } .preview small { display: none; } .preview strong { font-size: .88rem; } .choice { gap: 7px; } .segment { height: 36px; } .actions { margin-top: 8px; } label, .field-label { margin-bottom: 4px; font-size: .75rem; } .playlist-row { margin: 0 0 7px; } footer { padding: 4px 12px; min-height: 24px; } }
+  @media (max-width: 720px), (max-height: 600px) { .topbar { padding: 0 10px; min-height: 40px; gap: 8px; } .brand { font-size: .82rem; } .brand small, .eyebrow { display: none; } nav button { padding: 6px 9px; font-size: .78rem; } main { width: min(100% - 24px, 820px); } .download { padding-top: 9px; } .heading { margin-bottom: 11px; } h1 { font-size: 1.5rem; } .intro { display: none; } input:not([type=checkbox]), select { min-height: 36px; } .secondary, .primary, .text-button { min-height: 36px; padding: 0 11px; font-size: .82rem; } .preview { min-height: 55px; margin: 7px 0 10px; padding: 7px 10px; } .preview-icon { width: 34px; height: 34px; } .preview-image { width: 70px; height: 40px; } .preview small { display: none; } .preview strong { font-size: .88rem; } .choice { gap: 7px; } .segment { height: 36px; } .actions { margin-top: 8px; } label, .field-label { margin-bottom: 4px; font-size: .75rem; } .playlist-row { margin: 0 0 7px; } footer { padding: 4px 12px; min-height: 24px; } }
   @media (max-width: 530px) { .brand { display: none; } .topbar { justify-content: center; } .choice { grid-template-columns: 1fr 1fr; } .choice > :last-child { grid-column: 1 / -1; } .settings-grid { grid-template-columns: 1fr; } }
-  @media (max-height: 430px) { .preview-icon { display: none; } .preview { min-height: 38px; margin: 4px 0 7px; padding: 5px 8px; } .heading { margin-bottom: 7px; } .download { padding-top: 5px; } .actions { margin-top: 4px; } .playlist-row { margin-bottom: 4px; } }
+  @media (max-height: 430px) { .preview-icon, .preview-image { display: none; } .preview { min-height: 38px; margin: 4px 0 7px; padding: 5px 8px; } .heading { margin-bottom: 7px; } .download { padding-top: 5px; } .actions { margin-top: 4px; } .playlist-row { margin-bottom: 4px; } }
   @media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }
   @media (forced-colors: active) { .primary, .secondary, .segment button.selected, nav button.active { border: 1px solid ButtonText; } progress { accent-color: Highlight; } }
 </style>
