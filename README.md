@@ -1,3 +1,12 @@
+# Unofficial yt-dlp Desktop
+
+This branch adds an independent Windows desktop app built with Tauri 2. It is
+not published or endorsed by the yt-dlp maintainers. The original yt-dlp CLI
+and Python API remain under `yt_dlp/`; their upstream documentation follows.
+See [desktop/README.md](desktop/README.md) for the GUI source and preview
+build instructions. The previous Qt preview remains on the `desktop-preview`
+branch and in the preserved original checkout.
+
 <!-- MANPAGE: BEGIN EXCLUDED SECTION -->
 <div align="center">
 

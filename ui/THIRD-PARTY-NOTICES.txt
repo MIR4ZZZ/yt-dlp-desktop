@@ -1,9 +1,0 @@
-Unofficial yt-dlp Desktop uses these separately distributed components:
-
-yt-dlp 2026.10.26: Unlicense and third-party notices are in this directory.
-Qt for Python / PySide6 6.11.1: LGPL-3.0-only or GPL; component metadata and
-LGPL-3.0/GPL-3.0 license texts are in this directory. Qt DLLs remain separate.
-Qt license information: https://doc.qt.io/qt-6/licensing.html
-Deno 2.9.8: see Deno-LICENSE.md in this directory.
-FFmpeg N-128340-gf80a436ffd GPL build: see FFmpeg-LICENSE.txt in this directory.
-The matching FFmpeg source and build-recipe archives accompany the installer.
