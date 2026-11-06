@@ -31,6 +31,8 @@ if ($tagRevision -ne $upstreamRevision -or $LASTEXITCODE -ne 0 -or
     (git status --porcelain)) {
     throw 'The release must be built from the unmodified yt-dlp 2026.10.26 source tag.'
 }
+$env:PYTHONHASHSEED = '1'
+$env:SOURCE_DATE_EPOCH = (& git show -s --format=%ct $upstreamRevision).Trim()
 if (-not (Test-Path -LiteralPath $python)) {
     python -m venv $venvRoot
     if ($LASTEXITCODE -ne 0) { throw 'Could not create release environment.' }
