@@ -22,6 +22,7 @@ pub struct Queue {
     child: Mutex<Option<(String, Child)>>,
     running: AtomicBool,
     paused: AtomicBool,
+    shutting_down: AtomicBool,
 }
 
 fn emit(app: &tauri::AppHandle, queue: &Arc<Queue>) {
@@ -42,6 +43,16 @@ pub(crate) fn force_tree(child: &mut Child) {
 }
 
 impl Queue {
+    pub(crate) fn shutdown(&self) {
+        self.shutting_down.store(true, Ordering::SeqCst);
+        self.paused.store(true, Ordering::SeqCst);
+        let mut held = self.child.lock().unwrap();
+        if let Some((_, child)) = held.as_mut() {
+            if child.try_wait().ok().flatten().is_none() { force_tree(child); }
+            let _ = child.wait();
+        }
+    }
+
     pub fn add(self: &Arc<Self>, app: tauri::AppHandle, spec: DownloadSpec, start_now: bool) -> Result<(), String> {
         core::download_args(&spec, &tools()?)?;
         self.jobs.lock().unwrap().push(Job { id: uuid::Uuid::new_v4().to_string(), spec,
@@ -56,6 +67,10 @@ impl Queue {
             "pause" => self.paused.store(true, Ordering::SeqCst),
             "resume" => { self.paused.store(false, Ordering::SeqCst); self.start(app.clone()); },
             "stop" | "stop_and_wait" => {
+                if action == "stop_and_wait" {
+                    self.shutting_down.store(true, Ordering::SeqCst);
+                    self.paused.store(true, Ordering::SeqCst);
+                }
                 let mut held = self.child.lock().unwrap();
                 if let Some((active_id, child)) = held.as_mut() {
                     if id.is_none_or(|id| id == active_id) {
@@ -109,11 +124,12 @@ impl Queue {
     }
 
     fn start(self: &Arc<Self>, app: tauri::AppHandle) {
+        if self.shutting_down.load(Ordering::SeqCst) { return }
         if self.running.swap(true, Ordering::SeqCst) { return }
         let queue = self.clone();
         thread::spawn(move || {
             loop {
-                if queue.paused.load(Ordering::SeqCst) { break }
+                if queue.paused.load(Ordering::SeqCst) || queue.shutting_down.load(Ordering::SeqCst) { break }
                 let next = {
                     let mut jobs = queue.jobs.lock().unwrap();
                     jobs.iter_mut().find(|job| job.status == "Queued").map(|job| {
@@ -146,12 +162,15 @@ impl Queue {
     }
 
     fn run(self: &Arc<Self>, app: &tauri::AppHandle, id: &str, spec: &DownloadSpec) -> Result<(), String> {
+        let mut held = self.child.lock().unwrap();
+        if self.shutting_down.load(Ordering::SeqCst) { return Err("Application closing".into()) }
         let mut child = Command::new(engine()?).args(core::download_args(spec, &tools()?)?)
             .stdout(Stdio::piped()).stderr(Stdio::piped()).creation_flags(0x08000000)
             .spawn().map_err(|e| e.to_string())?;
         let stdout = child.stdout.take().ok_or("No download output")?;
         let stderr = child.stderr.take().ok_or("No download log")?;
-        *self.child.lock().unwrap() = Some((id.into(), child));
+        *held = Some((id.into(), child));
+        drop(held);
         let queue = self.clone(); let app1 = app.clone(); let id1 = id.to_string();
         let out = thread::spawn(move || for line in BufReader::new(stdout).lines().map_while(Result::ok) {
             if let Some(data) = core::progress(&line) {

@@ -5,6 +5,7 @@ use core::{DownloadSpec, analysis_args, download_args};
 use serde_json::{Value, json};
 use std::{path::PathBuf, process::{Command, Stdio}, sync::{Arc, Mutex, atomic::{AtomicU64, Ordering}}, time::{Duration, Instant}};
 use std::os::windows::process::CommandExt;
+use tauri::Manager;
 
 #[derive(Default)]
 struct State { analysis: Mutex<Option<(u64, std::process::Child)>>, generation: AtomicU64 }
@@ -215,6 +216,14 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![bootstrap, save_settings, command_preview, analyze, cancel_analysis, add_job, queue_action, clear_history, open_folder])
+        .on_window_event(|window, event| {
+            if matches!(event, tauri::WindowEvent::Destroyed) {
+                window.app_handle().state::<Arc<queue::Queue>>().shutdown();
+                if let Some((_, mut child)) = window.app_handle().state::<Arc<State>>().analysis.lock().unwrap().take() {
+                    queue::force_tree(&mut child);
+                }
+            }
+        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
